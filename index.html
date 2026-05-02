@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>데스 게임: 블랙잭</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;800&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #030303;
+            color: white;
+            margin: 0;
+            overflow: hidden; 
+            -webkit-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+
+        .noise-bg {
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.03'/%3E%3C/svg%3E");
+        }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 3px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.25); border-radius: 3px; }
+
+        .card {
+            width: clamp(40px, 8vw, 80px);
+            aspect-ratio: 1 / 1.4;
+            background: #fdfdfd;
+            border-radius: 6px;
+            color: #1a1a1a;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: clamp(4px, 1vw, 8px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            position: relative;
+            animation: dealCard 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+            transform-style: preserve-3d;
+            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.6s ease;
+        }
+
+        @keyframes dealCard {
+            from { transform: translateY(-40px) scale(0.85); opacity: 0; }
+            to { transform: translateY(0) scale(1); opacity: 1; }
+        }
+
+        .card.red { color: #d43737; }
+        
+        .card-back {
+            background: repeating-linear-gradient(45deg, #111, #111 5px, #1a1a1a 5px, #1a1a1a 10px);
+            border: 2px solid #2a2a2a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.8);
+        }
+        
+        .card-back::after {
+            content: '?';
+            font-family: 'Inter', sans-serif;
+            font-weight: 800;
+            color: #d43737;
+            background-color: rgba(0,0,0,0.8);
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid rgba(212,55,55,0.6);
+            font-size: clamp(0.8rem, 2.5vw, 1.2rem);
+            letter-spacing: 0.1em;
+            box-shadow: 0 0 10px rgba(212,55,55,0.3);
+        }
+
+        .card-text { font-size: clamp(10px, 2vw, 16px); font-weight: bold; line-height: 1; }
+        .card-suit { font-size: clamp(18px, 4vw, 32px); align-self: center; font-weight: 300; }
+
+        .glass-panel {
+            background: rgba(10, 10, 12, 0.8);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+            transition: all 0.3s ease;
+        }
+
+        #message-display {
+            text-shadow: 0 0 40px rgba(220,38,38,0.3);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .role-badge { font-size: 0.6rem; padding: 0.1rem 0.3rem; border-radius: 0.2rem; font-weight: 600; margin-right: 0.4rem; letter-spacing: 0.1em; }
+        .role-dealer { background: rgba(212, 55, 55, 0.2); color: #d43737; border: 1px solid rgba(212,55,55,0.3); }
+        .role-player { background: rgba(255, 255, 255, 0.1); color: white; border: 1px solid rgba(255,255,255,0.2); }
+        .role-spectator { background: transparent; color: #9ca3af; border: 1px solid #6b7280; }
+
+        .status-light { width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; flex-shrink: 0; }
+        .light-alive { background-color: #22c55e; box-shadow: 0 0 8px #22c55e, 0 0 12px #22c55e; }
+        .light-dead { background-color: #ef4444; box-shadow: 0 0 8px #ef4444, 0 0 12px #ef4444; }
+
+        .fade-transition { transition: opacity 0.8s ease-in-out; }
+    </style>
+</head>
+<body class="w-screen h-screen bg-[#030303] noise-bg flex flex-col items-center justify-center relative overflow-hidden">
+
+    <div class="fixed inset-0 bg-[radial-gradient(circle_at_center,_#0a0808_0%,_#030303_100%)] pointer-events-none z-0"></div>
+
+    <div id="dim-overlay" class="fixed inset-0 bg-black/90 z-[90] opacity-0 pointer-events-none transition-opacity duration-700"></div>
+    <div id="message-display" class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[100] text-[3rem] md:text-[5rem] font-light text-center tracking-[0.2em] uppercase pointer-events-none scale-150 opacity-0 whitespace-nowrap transition-all duration-700"></div>
+
+    <div id="login-overlay" class="fixed inset-0 z-[100] flex flex-col items-center justify-center p-4 fade-transition pointer-events-auto">
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[50rem] h-[50rem] bg-gradient-to-tr from-red-900/5 to-gray-900/5 rounded-full blur-[100px] pointer-events-none"></div>
+        <div class="glass-panel relative z-10 w-full max-w-sm rounded-2xl p-12">
+            <div class="text-center mb-10">
+                <h2 class="text-[#d43737] text-[9px] tracking-[0.4em] font-light mb-4 uppercase opacity-70">Deathmatch Lounge</h2>
+                <h1 class="text-3xl font-light tracking-[0.2em] text-white uppercase">Blackjack</h1>
+            </div>
+            <div class="space-y-8">
+                <div class="relative">
+                    <input type="text" id="nickname-input" class="w-full bg-white/[0.03] border border-white/10 rounded-lg text-white px-4 py-3.5 outline-none focus:border-[#9e9e9e]/50 focus:bg-white/[0.05] transition-all text-center text-sm font-light tracking-widest placeholder-white/20 shadow-inner uppercase" placeholder="ENTER NICKNAME" maxlength="10">
+                </div>
+                <div class="flex flex-col gap-3">
+                    <button onclick="window.joinGame('player')" class="w-full bg-white text-black hover:bg-gray-200 font-semibold py-3.5 rounded-lg transition-all tracking-[0.15em] text-xs uppercase shadow-[0_0_15px_rgba(255,255,255,0.1)]">
+                        Join Game
+                    </button>
+                    <button onclick="window.joinGame('spectator')" class="w-full bg-transparent border border-white/40 hover:bg-white/10 text-gray-200 font-medium py-3 rounded-lg transition-all tracking-[0.15em] uppercase text-xs">
+                        Spectate
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="main-ui" class="opacity-0 fade-transition hidden w-full h-full relative p-4">
+        
+        <header id="user-list-panel" class="fixed top-6 left-6 z-[60] flex flex-col pointer-events-auto">
+            <div class="w-[260px] md:w-[300px] glass-panel rounded-3xl p-5 relative max-h-[30vh] flex flex-col">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-white/50 text-[10px] font-light tracking-[0.3em] uppercase">Roster</span>
+                </div>
+                <ul id="user-list-ul" class="space-y-3 overflow-y-auto custom-scrollbar pr-2 text-sm font-light flex-1">
+                </ul>
+            </div>
+        </header>
+
+        <div id="game-log-panel" class="fixed bottom-6 left-6 z-[60] flex flex-col pointer-events-auto">
+            <div id="game-log-container" class="w-[260px] md:w-[300px] glass-panel rounded-3xl p-5 flex flex-col transition-all overflow-hidden h-[200px]">
+                <div class="flex justify-between items-center mb-4 shrink-0">
+                    <span class="text-white/50 text-[10px] font-light tracking-[0.3em] uppercase">System Log</span>
+                    <div class="flex gap-2 items-center">
+                        <button id="clear-logs-btn" onclick="window.clearLogs()" class="hidden items-center justify-center cursor-pointer text-[9px] text-[#d43737] hover:text-white font-bold tracking-wider px-2 py-1 border border-[#d43737]/50 rounded transition-all bg-[#d43737]/10 hover:bg-[#d43737]/40 z-[100]">
+                            CLEAR
+                        </button>
+                        <button onclick="window.toggleLog()" class="text-white/50 hover:text-white px-2 cursor-pointer font-bold text-xs" title="로그 접기/펴기">
+                            _
+                        </button>
+                    </div>
+                </div>
+                <div id="game-log" class="flex-1 overflow-y-auto custom-scrollbar text-[11px] font-medium text-gray-200 flex flex-col gap-2 pr-2 pb-2 tracking-wide leading-relaxed break-keep transition-opacity duration-300">
+                </div>
+            </div>
+        </div>
+
+        <div id="status-panel" class="fixed top-6 right-6 z-[60] pointer-events-auto flex flex-col gap-2 items-end">
+            <div class="glass-panel rounded-full px-6 py-3 flex items-center gap-4 shadow-2xl h-fit">
+                <span class="text-gray-300 text-[10px] uppercase tracking-[0.2em] font-light">STATUS</span>
+                <span id="game-status" class="text-white text-xs tracking-widest font-semibold">WAITING</span>
+            </div>
+            <div id="elimination-tracker" class="hidden glass-panel rounded-full px-6 py-2 flex items-center gap-4 shadow-2xl h-fit">
+                <span class="text-[#d43737] text-[9px] uppercase tracking-[0.2em] font-light">ELIMINATIONS</span>
+                <span id="elimination-count" class="text-white text-[11px] tracking-widest font-semibold">0 / 1</span>
+            </div>
+        </div>
+
+        <div id="game-area" class="w-full flex-1 flex flex-col items-center justify-center p-4 pt-32 pb-32 min-h-screen relative">
+            
+            <div id="waiting-screen" class="hidden absolute inset-0 flex items-center justify-center z-[50] pointer-events-none">
+                <div class="text-white/40 tracking-[0.5em] text-3xl md:text-5xl font-light animate-pulse uppercase">waiting...</div>
+            </div>
+
+            <div id="system-setup-panel" class="hidden flex-col items-center gap-6 glass-panel p-8 rounded-2xl z-[60] pointer-events-auto shadow-2xl relative">
+                <h2 class="text-white/80 text-xs tracking-[0.3em] uppercase font-light">System Setup</h2>
+                <div class="flex items-center gap-4">
+                    <label class="text-sm text-gray-300 font-light tracking-wider">목표 탈락자 수:</label>
+                    <input type="number" id="target-eliminations" min="1" max="10" value="1" class="w-16 bg-white/5 border border-white/20 rounded text-white px-2 py-1 text-center outline-none focus:border-[#d43737] transition-colors">
+                </div>
+                <button onclick="window.confirmSystemSetup()" class="bg-[#d43737] text-white hover:bg-red-700 font-semibold px-8 py-3 rounded-lg transition-all tracking-[0.15em] text-xs uppercase shadow-[0_0_20px_rgba(212,55,55,0.4)] cursor-pointer">
+                    매치 시작
+                </button>
+            </div>
+
+            <div id="table-area" class="hidden items-center justify-center w-full max-w-5xl flex-1 flex-col gap-2 relative pointer-events-none z-[60]">
+                <div id="dealer-zone" class="flex flex-col items-center gap-4 w-full my-auto shrink-1" style="order: 1">
+                    <div id="dealer-score" class="text-white/60 text-[10px] tracking-[0.3em] uppercase font-medium opacity-0 transition-opacity">DEALER: ?</div>
+                    <div class="flex gap-2 min-h-[110px] justify-center w-full flex-wrap px-4" id="dealer-cards"></div>
+                </div>
+
+                <div id="player-zone" class="flex flex-wrap justify-center items-end gap-x-8 gap-y-4 w-full my-auto shrink-1 px-4" style="order: 3">
+                </div>
+            </div>
+
+            <div id="controls" class="flex justify-center items-center relative z-[100] w-full mt-8 h-[60px] pointer-events-none shrink-0">
+                <div id="spectator-msg" class="hidden text-white/60 text-xs font-medium tracking-[0.3em] glass-panel border border-white/10 px-8 py-3 rounded-full uppercase pointer-events-auto">
+                    Waiting for System...
+                </div>
+                
+                <div id="dealer-controls" class="hidden gap-4 pointer-events-auto">
+                    <button onclick="window.goToSetup()" class="bg-transparent border border-white/40 hover:bg-white/10 text-gray-200 font-medium px-8 py-3.5 rounded-lg transition-all tracking-[0.15em] text-xs uppercase cursor-pointer">
+                        RESET MATCH
+                    </button>
+                    <button id="btn-deal-cards" onclick="window.dealNextRound()" class="bg-white text-black hover:bg-gray-200 font-semibold px-12 py-3.5 rounded-lg transition-all tracking-[0.15em] text-sm uppercase shadow-[0_0_20px_rgba(255,255,255,0.1)] cursor-pointer">
+                        Deal Cards
+                    </button>
+                </div>
+                
+                <div id="action-controls" class="hidden gap-4 pointer-events-auto">
+                    <button onclick="window.hit()" id="hit-btn" class="bg-white text-black hover:bg-gray-200 font-semibold px-10 py-3.5 rounded-lg transition-all tracking-[0.15em] text-xs uppercase shadow-[0_0_15px_rgba(255,255,255,0.1)] cursor-pointer">Hit</button>
+                    <button onclick="window.stand()" id="stand-btn" class="bg-transparent border border-white/40 hover:bg-white/10 text-gray-200 font-medium px-10 py-3.5 rounded-lg transition-all tracking-[0.15em] uppercase text-xs cursor-pointer">Stand</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <script>
+        const audioFiles = {
+            click: new Audio('click.mp3'),
+            flip: new Audio('flip.mp3'),
+            survive: new Audio('survive.mp3'),
+            eliminate: new Audio('eliminate.mp3')
+        };
+
+        const Sound = {
+            play: function(type) {
+                if (audioFiles[type]) {
+                    const soundClone = audioFiles[type].cloneNode(true);
+                    soundClone.volume = 0.6;
+                    soundClone.play().catch(e => {
+                        console.warn("Sound play error (MP3 파일이 없거나 정책에 막힘):", e);
+                    });
+                }
+            }
+        };
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCS4lognXqZnvJHhVg7ZPZFoytM9EMn8IY",
+            authDomain: "black-jack-8dfad.firebaseapp.com",
+            databaseURL: "https://black-jack-8dfad-default-rtdb.firebaseio.com/",
+            projectId: "black-jack-8dfad",
+            storageBucket: "black-jack-8dfad.firebasestorage.app",
+            messagingSenderId: "229512311924",
+            appId: "1:229512311924:web:0c6c1d38a88f74ef49cd21"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        window.gameState = {
+            phase: 'waiting', targetEliminations: 1, currentEliminations: 0, currentTurnIndex: -1, revealStep: 0,
+            dealer: null, dealerHand: [], dealerState: 'playing', players: [], spectators: [], logs: []
+        };
+        window.currentUser = null;
+        window.activePresence = {};
+        window.isFullyJoined = false;
+        let lastEndedHandled = false;
+
+        window.toggleLog = function() {
+            Sound.play('click');
+            const container = document.getElementById('game-log-container');
+            const logBody = document.getElementById('game-log');
+            if (container.style.height === '50px') {
+                container.style.height = '200px';
+                logBody.style.opacity = '1'; logBody.style.pointerEvents = 'auto';
+            } else {
+                container.style.height = '50px';
+                logBody.style.opacity = '0'; logBody.style.pointerEvents = 'none';
+            }
+        };
+
+        function addLog(msg, type = 'info') {
+            if (!window.gameState.logs) window.gameState.logs = [];
+            window.gameState.logs.push({ msg, type, timestamp: Date.now() });
+            if (window.gameState.logs.length > 50) window.gameState.logs.shift();
+        }
+
+        window.clearLogs = function() {
+            if (window.currentUser?.role !== 'dealer') return;
+            Sound.play('click');
+            window.gameState.logs = [{msg: "시스템에 의해 로그가 초기화되었습니다.", type: "alert", timestamp: Date.now()}];
+            window.updateDB();
+        };
+
+        window.kickUser = function(id, role) {
+            if (window.currentUser?.role !== 'dealer') return;
+            Sound.play('click');
+            let targetName = "유저";
+            
+            if (role === 'player') {
+                const p = window.gameState.players.find(x => x.id === id);
+                if (p) targetName = p.name;
+                window.gameState.players = window.gameState.players.filter(x => x.id !== id);
+            } else {
+                const s = window.gameState.spectators.find(x => x.id === id);
+                if (s) targetName = s.name;
+                window.gameState.spectators = window.gameState.spectators.filter(x => x.id !== id);
+            }
+            
+            addLog(`시스템이 [${targetName}] 님을 강제 퇴장시켰습니다.`, 'alert');
+            if (window.gameState.phase === 'playing') window.nextTurn(true); else window.updateDB();
+        };
+
+        window.updateDB = function() { db.ref('blackjack/room1/gameState').set(window.gameState).catch(err => console.error(err)); };
+        window.setupPresence = function(uid) {
+            const myPresenceRef = db.ref('blackjack/room1/presence/' + uid);
+            myPresenceRef.set(true); myPresenceRef.onDisconnect().remove();
+        };
+
+        db.ref('blackjack/room1/presence').on('value', snap => {
+            window.activePresence = snap.val() || {};
+            if (typeof window.checkAndCleanGhosts === 'function') window.checkAndCleanGhosts();
+        });
+
+        db.ref('blackjack/room1/gameState').on('value', snap => {
+            const data = snap.val();
+            if (data) {
+                window.gameState = data;
+                if (!window.gameState.players) window.gameState.players = [];
+                if (!window.gameState.spectators) window.gameState.spectators = [];
+                if (!window.gameState.logs) window.gameState.logs = [];
+                if (!window.gameState.dealerHand) window.gameState.dealerHand = [];
+
+                if (window.currentUser && window.isFullyJoined) {
+                    const isStillDealer = window.gameState.dealer?.id === window.currentUser.id;
+                    const isStillPlayer = window.gameState.players.some(p => p.id === window.currentUser.id);
+                    const isStillSpectator = window.gameState.spectators.some(s => s.id === window.currentUser.id);
+                    if (!isStillDealer && !isStillPlayer && !isStillSpectator) { window.location.reload(); return; }
+                }
+                window.updateUIFromState();
+                window.checkAndCleanGhosts();
+            }
+        });
+
+        const SUITS = ['♠', '♣', '♥', '♦'];
+        const VALUES = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+        function createDeck() { const deck = []; for (let suit of SUITS) for (let value of VALUES) deck.push({ suit, value }); return deck.sort(() => Math.random() - 0.5); }
+        function getCardValue(card) { if (['J', 'Q', 'K'].includes(card.value)) return 10; if (card.value === 'A') return 11; return parseInt(card.value); }
+        function calculateScore(hand) {
+            if (!hand) return 0;
+            let score = hand.reduce((sum, card) => sum + getCardValue(card), 0);
+            let aces = hand.filter(card => card.value === 'A').length;
+            while (score > 21 && aces > 0) { score -= 10; aces -= 1; }
+            return score;
+        }
+
+        function updateCardEl(el, card, isHidden) {
+            const isRed = ['♥', '♦'].includes(card.suit);
+            const targetClass = `card ${isRed ? 'red' : ''} ${isHidden ? 'card-back' : ''}`;
+            
+            if (!el.classList.contains('card')) {
+                el.className = targetClass;
+                el.innerHTML = isHidden ? '' : `<div class="card-text">${card.value}</div><div class="card-suit">${card.suit}</div><div class="card-text rotate-180">${card.value}</div>`;
+                if (!isHidden) Sound.play('flip');
+            } else if (el.className !== targetClass) {
+                if (el.className.includes('card-back') && !isHidden) {
+                    el.style.animation = 'none'; el.style.transform = 'rotateY(90deg) scale(1.1)';
+                    Sound.play('flip');
+                    setTimeout(() => {
+                        el.className = targetClass;
+                        el.innerHTML = `<div class="card-text">${card.value}</div><div class="card-suit">${card.suit}</div><div class="card-text rotate-180">${card.value}</div>`;
+                        el.style.transform = 'rotateY(0deg) scale(1)';
+                    }, 300);
+                } else {
+                    el.className = targetClass;
+                    el.innerHTML = isHidden ? '' : `<div class="card-text">${card.value}</div><div class="card-suit">${card.suit}</div><div class="card-text rotate-180">${card.value}</div>`;
+                }
+            } else if (!isHidden && el.innerHTML === '') {
+                el.innerHTML = `<div class="card-text">${card.value}</div><div class="card-suit">${card.suit}</div><div class="card-text rotate-180">${card.value}</div>`;
+            }
+        }
+
+        window.startReveal = function(isFromKick = false) {
+            window.gameState.phase = 'revealing'; window.gameState.revealStep = 0;
+            addLog("모든 플레이어 행동 종료. 순차적으로 카드를 공개합니다...", 'alert');
+            if (!isFromKick) window.updateDB();
+
+            let maxCards = window.gameState.dealerHand.length;
+            window.gameState.players.forEach(p => { if (p.isAlive && p.hand.length > maxCards) maxCards = p.hand.length; });
+            
+            let step = 0;
+            let revealInterval = setInterval(() => {
+                step++;
+                if (step > maxCards) {
+                    clearInterval(revealInterval); window.endGame(); 
+                } else {
+                    window.gameState.revealStep = step; window.updateDB();
+                    if (step === 1) addLog("첫 번째 카드를 공개합니다.", "info"); else addLog(`${step}번째 카드를 공개합니다.`, "info");
+                }
+            }, 3000); 
+        };
+
+        window.endGame = function() {
+            window.gameState.phase = 'ended';
+            
+            let bustedPlayers = [];
+            let validPlayers = [];
+            const dealerScore = calculateScore(window.gameState.dealerHand);
+
+            window.gameState.players.forEach(p => {
+                if(!p.isAlive) return; 
+                const pScore = calculateScore(p.hand);
+                if (pScore > 21) bustedPlayers.push({ p, score: pScore });
+                else validPlayers.push({ p, score: pScore });
+            });
+
+            let eliminationOccurred = false;
+
+            if (bustedPlayers.length > 0) {
+                bustedPlayers.forEach(bp => { bp.p.isAlive = false; window.gameState.currentEliminations++; });
+                addLog(`버스트된 플레이어가 심판받았습니다.`, 'alert');
+                eliminationOccurred = true;
+            } 
+            
+            if (!eliminationOccurred && validPlayers.length > 0 && dealerScore <= 21) {
+                let minScore = Math.min(...validPlayers.map(vp => vp.score));
+                validPlayers.forEach(vp => {
+                    if (vp.score === minScore) {
+                        vp.p.isAlive = false; window.gameState.currentEliminations++;
+                        eliminationOccurred = true;
+                    }
+                });
+                addLog(`최저 점수를 기록한 플레이어가 심판받았습니다.`, 'alert');
+            } 
+            else if (dealerScore > 21 && validPlayers.length > 0) {
+                addLog(`딜러가 버스트했습니다. 생존한 플레이어들은 룰에 의해 안전합니다.`, 'success');
+            }
+
+            addLog(`게임 종료! 결과가 처리되었습니다.`, 'info');
+            window.updateDB();
+        };
+
+        window.nextTurn = function(isFromKick = false) {
+            const pLen = window.gameState.players.length;
+            const total = pLen + 1;
+            
+            let anyonePlaying = false;
+            for(let i=0; i<pLen; i++) { if (window.gameState.players[i].isAlive && window.gameState.players[i].state === 'playing') anyonePlaying = true; }
+            if (window.gameState.dealerState === 'playing') anyonePlaying = true;
+
+            if (!anyonePlaying) { if (window.gameState.phase === 'playing') window.startReveal(isFromKick); return; }
+
+            let nextIdx = isFromKick ? -1 : window.gameState.currentTurnIndex;
+            for (let i = 1; i <= total; i++) {
+                let checkIdx = (nextIdx + i) % total;
+                if (checkIdx < pLen) {
+                    if (window.gameState.players[checkIdx].isAlive && window.gameState.players[checkIdx].state === 'playing') { window.gameState.currentTurnIndex = checkIdx; break; }
+                } else {
+                    if (window.gameState.dealerState === 'playing') { window.gameState.currentTurnIndex = checkIdx; break; }
+                }
+            }
+            if (!isFromKick) window.updateDB();
+        };
+
+        function renderTable() {
+            if (['waiting', 'setup'].includes(window.gameState.phase)) {
+                document.getElementById('dealer-cards').innerHTML = ''; document.getElementById('player-zone').innerHTML = ''; document.getElementById('dealer-score').classList.add('opacity-0'); return;
+            }
+
+            const isDealerMe = window.currentUser?.role === 'dealer';
+            const phase = window.gameState.phase;
+            const revealStep = window.gameState.revealStep || 0;
+
+            const dealerZone = document.getElementById('dealer-zone');
+            const playerZone = document.getElementById('player-zone');
+            
+            dealerZone.style.order = isDealerMe ? "3" : "1";
+            playerZone.style.order = isDealerMe ? "1" : "3";
+
+            const dCards = window.gameState.dealerHand || [];
+            const dealerCardsDiv = document.getElementById('dealer-cards');
+            while (dealerCardsDiv.children.length > dCards.length) dealerCardsDiv.removeChild(dealerCardsDiv.lastChild);
+            
+            let dVisibleCards = [];
+            dCards.forEach((c, idx) => {
+                let el = dealerCardsDiv.children[idx];
+                if (!el) { el = document.createElement('div'); dealerCardsDiv.appendChild(el); }
+                let isHidden = false;
+                if (phase === 'playing') { if (idx > 0 && !isDealerMe) isHidden = true; } 
+                else if (phase === 'revealing') { if (idx >= revealStep && !isDealerMe) isHidden = true; }
+                if (!isHidden || isDealerMe) dVisibleCards.push(c);
+                updateCardEl(el, c, isHidden);
+            });
+
+            const dScoreUI = document.getElementById('dealer-score');
+            if (dCards.length > 0) {
+                if (isDealerMe || phase === 'ended') { dScoreUI.innerText = `DEALER: ${calculateScore(dCards)} (${dCards.length}장)`; } 
+                else { let displayedScore = calculateScore(dVisibleCards); dScoreUI.innerText = phase === 'playing' ? `DEALER: ${displayedScore} + ? (${dCards.length}장)` : `DEALER: ${displayedScore} (${dCards.length}장)`; }
+                dScoreUI.classList.remove('opacity-0');
+            } else { dScoreUI.classList.add('opacity-0'); }
+
+            while (playerZone.children.length > window.gameState.players.length) playerZone.removeChild(playerZone.lastChild);
+            
+            window.gameState.players.forEach((p, pIdx) => {
+                let wrapper = playerZone.children[pIdx];
+                if (!wrapper) {
+                    wrapper = document.createElement('div'); wrapper.className = "flex flex-col items-center gap-2 transition-all duration-700";
+                    wrapper.innerHTML = `<div class="p-info text-[10px] tracking-[0.2em] uppercase font-medium flex items-center gap-2 justify-center"></div><div class="p-cards flex gap-1 justify-center flex-wrap min-h-[110px]"></div>`;
+                    playerZone.appendChild(wrapper);
+                }
+                
+                const infoEl = wrapper.querySelector('.p-info');
+                const cardsEl = wrapper.querySelector('.p-cards');
+
+                if (!p.isAlive) {
+                    wrapper.classList.add('opacity-40');
+                    infoEl.innerHTML = `<div class="status-light light-dead"></div><span class="text-red-500 line-through decoration-red-500/50">${p.name}</span> <span class="text-red-500 text-[9px]">(ELIMINATED)</span>`;
+                    cardsEl.innerHTML = '';
+                    return;
+                }
+
+                wrapper.classList.remove('opacity-40');
+                const isMe = window.currentUser?.id === p.id;
+                const pCards = p.hand || [];
+                
+                let pVisibleCards = [];
+                while (cardsEl.children.length > pCards.length) cardsEl.removeChild(cardsEl.lastChild);
+                
+                pCards.forEach((c, cIdx) => {
+                    let el = cardsEl.children[cIdx];
+                    if (!el) { el = document.createElement('div'); cardsEl.appendChild(el); }
+                    
+                    let isHidden = false;
+                    if (phase === 'playing') { if (!isMe) isHidden = true; } 
+                    else if (phase === 'revealing') { if (!isMe && cIdx >= revealStep) isHidden = true; }
+                    
+                    if (!isHidden || isMe) pVisibleCards.push(c);
+                    updateCardEl(el, c, isHidden);
+                });
+
+                let scoreText = (isMe || phase === 'ended') ? calculateScore(pCards) : (phase === 'playing' ? '?' : calculateScore(pVisibleCards));
+                const isTurn = (phase === 'playing' && window.gameState.players[window.gameState.currentTurnIndex]?.id === p.id);
+                const turnPulse = isTurn ? 'text-yellow-400 font-bold animate-pulse' : 'text-white/60';
+                
+                infoEl.className = `p-info text-[10px] tracking-[0.2em] uppercase font-medium flex items-center gap-2 justify-center ${turnPulse}`;
+                infoEl.innerHTML = `<div class="status-light light-alive"></div><span>${p.name}: ${scoreText} (${pCards.length}장)${p.state === 'stood' ? " [STAND]" : ""}</span>`;
+            });
+        }
+
+        window.updateUIFromState = function() {
+            renderUserList(); renderLogs(); renderTable();
+            
+            const isDealer = window.currentUser?.role === 'dealer';
+            const isDealerTurn = window.gameState.currentTurnIndex === window.gameState.players.length;
+            const isMyTurn = (window.gameState.phase === 'playing' && ((isDealerTurn && isDealer) || (!isDealerTurn && window.gameState.players[window.gameState.currentTurnIndex]?.id === window.currentUser?.id)));
+
+            const clearBtn = document.getElementById('clear-logs-btn');
+            if (isDealer) { clearBtn.classList.remove('hidden'); clearBtn.classList.add('flex'); } else { clearBtn.classList.add('hidden'); clearBtn.classList.remove('flex'); }
+
+            let statusText = "WAITING";
+            if (window.gameState.phase === 'playing') statusText = isDealerTurn ? (isDealer ? "YOUR TURN" : "DEALER TURN") : (isMyTurn ? "YOUR TURN" : "PLAYERS TURN");
+            else if (window.gameState.phase === 'revealing') statusText = "REVEALING CARDS...";
+            else if (window.gameState.phase === 'ended') statusText = "ROUND ENDED";
+            
+            const gameStatusEl = document.getElementById('game-status');
+            gameStatusEl.innerText = statusText;
+            gameStatusEl.className = isMyTurn ? "text-yellow-400 text-xs tracking-widest font-semibold animate-pulse" : "text-white text-xs tracking-widest font-semibold";
+
+            const waitingScreen = document.getElementById('waiting-screen');
+
+            if (isDealer) {
+                waitingScreen.classList.add('hidden');
+                if (window.gameState.phase === 'setup') {
+                    document.getElementById('system-setup-panel').classList.remove('hidden'); document.getElementById('system-setup-panel').classList.add('flex');
+                    document.getElementById('table-area').classList.add('hidden'); document.getElementById('table-area').classList.remove('flex');
+                    document.getElementById('dealer-controls').classList.add('hidden'); document.getElementById('dealer-controls').classList.remove('flex');
+                } else {
+                    document.getElementById('system-setup-panel').classList.add('hidden'); document.getElementById('system-setup-panel').classList.remove('flex');
+                    document.getElementById('table-area').classList.remove('hidden'); document.getElementById('table-area').classList.add('flex');
+                    
+                    if(['ended', 'waiting'].includes(window.gameState.phase)) { 
+                        document.getElementById('dealer-controls').classList.remove('hidden'); 
+                        document.getElementById('dealer-controls').classList.add('flex'); 
+                        
+                        const dealBtn = document.getElementById('btn-deal-cards');
+                        if (window.gameState.phase === 'ended') {
+                            if (window.gameState.currentEliminations < window.gameState.targetEliminations) {
+                                dealBtn.innerText = "다음 라운드 이어가기";
+                                dealBtn.setAttribute('onclick', 'window.continueNextRound()');
+                                dealBtn.className = "bg-[#d43737] text-white hover:bg-red-700 font-semibold px-12 py-3.5 rounded-lg transition-all tracking-[0.15em] text-sm uppercase shadow-[0_0_20px_rgba(212,55,55,0.4)] cursor-pointer";
+                                dealBtn.classList.remove('hidden');
+                            } else {
+                                dealBtn.classList.add('hidden'); 
+                            }
+                        } else {
+                            dealBtn.innerText = "DEAL CARDS";
+                            dealBtn.setAttribute('onclick', 'window.dealNextRound()');
+                            dealBtn.className = "bg-white text-black hover:bg-gray-200 font-semibold px-12 py-3.5 rounded-lg transition-all tracking-[0.15em] text-sm uppercase shadow-[0_0_20px_rgba(255,255,255,0.1)] cursor-pointer";
+                            dealBtn.classList.remove('hidden');
+                        }
+                    } else { 
+                        document.getElementById('dealer-controls').classList.add('hidden'); 
+                        document.getElementById('dealer-controls').classList.remove('flex'); 
+                    }
+                }
+            } else {
+                document.getElementById('system-setup-panel').classList.add('hidden'); document.getElementById('system-setup-panel').classList.remove('flex');
+                if (window.isFullyJoined && ['setup', 'waiting'].includes(window.gameState.phase)) {
+                    waitingScreen.classList.remove('hidden');
+                    document.getElementById('table-area').classList.add('hidden'); document.getElementById('table-area').classList.remove('flex');
+                    document.getElementById('elimination-tracker').classList.add('hidden'); document.getElementById('elimination-tracker').classList.remove('flex');
+                } else {
+                    waitingScreen.classList.add('hidden');
+                    document.getElementById('table-area').classList.remove('hidden'); document.getElementById('table-area').classList.add('flex');
+                    document.getElementById('elimination-tracker').classList.remove('hidden'); document.getElementById('elimination-tracker').classList.add('flex');
+                    document.getElementById('elimination-count').innerText = `${window.gameState.currentEliminations} / ${window.gameState.targetEliminations}`;
+                }
+            }
+
+            const actionControls = document.getElementById('action-controls');
+            const specMsg = document.getElementById('spectator-msg');
+
+            if (isMyTurn) {
+                actionControls.classList.remove('hidden'); actionControls.classList.add('flex'); specMsg.classList.add('hidden');
+            } else {
+                actionControls.classList.add('hidden'); actionControls.classList.remove('flex');
+                if (window.gameState.phase === 'playing') { specMsg.innerText = "WAITING FOR OTHERS..."; specMsg.classList.remove('hidden'); } 
+                else if (window.gameState.phase === 'revealing') { specMsg.innerText = "REVEALING..."; specMsg.classList.remove('hidden'); } 
+                else { specMsg.classList.add('hidden'); }
+            }
+
+            const msgDisplay = document.getElementById('message-display');
+            const dimOverlay = document.getElementById('dim-overlay');
+            
+            if (window.gameState.phase === 'ended' && window.isFullyJoined) {
+                dimOverlay.classList.remove('opacity-0', 'pointer-events-none'); dimOverlay.classList.add('opacity-100', 'pointer-events-auto');
+                msgDisplay.classList.remove('scale-150', 'opacity-0'); msgDisplay.classList.add('scale-100', 'opacity-100');
+                
+                if (!lastEndedHandled) { 
+                    if (window.currentUser?.role === 'player') {
+                        const me = window.gameState.players.find(p => p.id === window.currentUser.id);
+                        if (!me || !me.isAlive) {
+                            msgDisplay.innerText = "ELIMINATED"; msgDisplay.className = msgDisplay.className.replace(/text-[#\w]+/g, '') + ' text-[#d43737]';
+                            Sound.play('eliminate');
+                        } else {
+                            msgDisplay.innerText = "SURVIVED"; msgDisplay.className = msgDisplay.className.replace(/text-[#\w]+/g, '') + ' text-white';
+                            Sound.play('survive');
+                        }
+                    } else {
+                        msgDisplay.innerText = "ROUND ENDED"; msgDisplay.className = msgDisplay.className.replace(/text-[#\w]+/g, '') + ' text-gray-400';
+                        Sound.play('survive'); 
+                    }
+                    lastEndedHandled = true;
+                }
+            } else {
+                dimOverlay.classList.remove('opacity-100', 'pointer-events-auto'); dimOverlay.classList.add('opacity-0', 'pointer-events-none');
+                msgDisplay.classList.remove('scale-100', 'opacity-100'); msgDisplay.classList.add('scale-150', 'opacity-0');
+                if (window.gameState.phase !== 'ended') lastEndedHandled = false;
+            }
+        }
+
+        function renderUserList() {
+            const ul = document.getElementById('user-list-ul'); ul.innerHTML = '';
+            const isSys = window.currentUser?.role === 'dealer';
+            const isDealerTurn = window.gameState.phase === 'playing' && window.gameState.currentTurnIndex === window.gameState.players.length;
+            
+            if (window.gameState.dealer) {
+                ul.innerHTML += `<li class="flex items-center pb-2 border-b border-white/10 mb-2"><span class="role-badge role-dealer">SYS</span><span class="text-[#d43737] tracking-wider font-semibold">SYSTEM${window.gameState.dealerState === 'stood' ? ' <span class="text-white/40">[STAND]</span>' : ''}</span>${isSys ? '<span class="text-[9px] text-white/40 ml-2">(YOU)</span>' : ''}${isDealerTurn ? '<span class="text-[10px] text-yellow-400 font-bold ml-2 animate-pulse">◀ TURN</span>' : ''}</li>`;
+            }
+
+            window.gameState.players.filter(p => p.isAlive).forEach(p => {
+                const isTurn = window.gameState.phase === 'playing' && window.gameState.players.findIndex(x=>x.id===p.id) === window.gameState.currentTurnIndex;
+                const kickBtn = isSys ? `<button onclick="window.kickUser('${p.id}', 'player')" class="ml-auto text-[9px] text-red-400 hover:text-white bg-red-900/30 px-2 py-1 rounded border border-red-500/20 transition-all uppercase tracking-widest font-bold cursor-pointer">추방</button>` : '';
+                ul.innerHTML += `<li class="flex items-center w-full"><div class="status-light light-alive"></div><span class="role-badge role-player">P</span><span class="text-white tracking-wider">${p.name}${p.state === 'stood' ? ' <span class="text-white/40">[STAND]</span>' : ''}</span>${p.name === window.currentUser?.name ? '<span class="text-[9px] text-white/40 ml-2">(YOU)</span>' : ''}${isTurn ? '<span class="text-[10px] text-yellow-400 font-bold ml-2 animate-pulse">◀ TURN</span>' : ''}${kickBtn}</li>`;
+            });
+
+            window.gameState.players.filter(p => !p.isAlive).forEach(p => {
+                const kickBtn = isSys ? `<button onclick="window.kickUser('${p.id}', 'player')" class="ml-auto text-[9px] text-red-400 hover:text-white bg-red-900/30 px-2 py-1 rounded border border-red-500/20 transition-all uppercase tracking-widest font-bold cursor-pointer">추방</button>` : '';
+                ul.innerHTML += `<li class="flex items-center opacity-60 w-full mt-2"><div class="status-light light-dead"></div><span class="role-badge role-player">P</span><span class="text-red-400 tracking-wider line-through decoration-red-500/50">${p.name}</span>${kickBtn}</li>`;
+            });
+
+            window.gameState.spectators.forEach(s => {
+                const kickBtn = isSys ? `<button onclick="window.kickUser('${s.id}', 'spectator')" class="ml-auto text-[8px] text-red-400 hover:text-white bg-red-900/30 px-2 py-1 rounded border border-red-500/20 transition-all uppercase tracking-widest font-bold cursor-pointer">추방</button>` : '';
+                ul.innerHTML += `<li class="flex items-center text-[11px] opacity-80 mt-2 w-full"><span class="role-badge role-spectator" style="font-size: 0.5rem;">S</span><span class="text-gray-400 tracking-wider">${s.name}</span>${kickBtn}</li>`;
+            });
+        }
+
+        function renderLogs() {
+            const logContainer = document.getElementById('game-log'); logContainer.innerHTML = '';
+            window.gameState.logs.forEach(log => {
+                const logEl = document.createElement('div');
+                let colorClass = 'text-gray-300';
+                if (log.type === 'alert') colorClass = 'text-[#d43737] font-semibold';
+                if (log.type === 'success') colorClass = 'text-blue-400 font-semibold'; 
+                if (log.type === 'action') colorClass = 'text-gray-100';
+                logEl.innerHTML = `<span class="opacity-40 mr-1">></span><span class="${colorClass}">${log.msg}</span>`;
+                logContainer.appendChild(logEl);
+            });
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        window.joinGame = function(requestedRole) {
+            Sound.play('click');
+            
+            const nameInput = document.getElementById('nickname-input').value.trim().toUpperCase();
+            if (!nameInput) { alert("닉네임을 입력해주세요."); return; }
+
+            let finalRole = requestedRole;
+            if (nameInput === 'SYSTEM') finalRole = 'dealer';
+
+            if (!window.gameState.dealer && window.gameState.players.length === 0 && window.gameState.spectators.length === 0) {
+                window.gameState.logs = []; window.gameState.phase = 'waiting';
+            }
+
+            let uid = sessionStorage.getItem('blackjack_uid') || (Date.now().toString() + Math.floor(Math.random() * 1000));
+            sessionStorage.setItem('blackjack_uid', uid);
+
+            window.currentUser = { id: uid, name: nameInput, role: finalRole, isAlive: true, hand: [], state: 'stood', joinTime: Date.now() };
+
+            if(finalRole === 'dealer') { window.gameState.dealer = window.currentUser; window.gameState.phase = 'setup'; } 
+            else if (finalRole === 'player') {
+                const existIdx = window.gameState.players.findIndex(p => p.id === uid);
+                if (existIdx > -1) window.gameState.players[existIdx] = { ...window.gameState.players[existIdx], name: nameInput, joinTime: Date.now() };
+                else window.gameState.players.push(window.currentUser);
+            } else {
+                const existIdx = window.gameState.spectators.findIndex(s => s.id === uid);
+                if (existIdx > -1) window.gameState.spectators[existIdx] = { ...window.gameState.spectators[existIdx], name: nameInput, joinTime: Date.now() };
+                else window.gameState.spectators.push(window.currentUser);
+            }
+
+            window.setupPresence(window.currentUser.id);
+
+            const loginOverlay = document.getElementById('login-overlay'); loginOverlay.style.opacity = '0';
+            setTimeout(() => {
+                loginOverlay.classList.add('hidden');
+                const mainUi = document.getElementById('main-ui');
+                mainUi.classList.remove('hidden'); void mainUi.offsetWidth; mainUi.classList.remove('opacity-0');
+                addLog(`${nameInput} 님이 ${finalRole.toUpperCase()}(으)로 접속했습니다.`, 'action');
+                window.updateDB(); window.isFullyJoined = true; window.updateUIFromState();
+            }, 800);
+        };
+
+        window.checkAndCleanGhosts = function() {
+            if (!window.currentUser || !window.gameState) return;
+            let isCleaner = window.currentUser.role === 'dealer' || (!window.gameState.dealer && (window.gameState.players || [])[0]?.id === window.currentUser.id);
+
+            if (isCleaner) {
+                let changed = false;
+                if (window.gameState.dealer && !window.activePresence[window.gameState.dealer.id]) {
+                    if (Date.now() - (window.gameState.dealer.joinTime || 0) > 8000) { window.gameState.dealer = null; changed = true; }
+                }
+
+                let newPlayers = (window.gameState.players || []).filter(p => { if (!window.activePresence[p.id] && Date.now() - (p.joinTime || 0) > 8000) { changed = true; return false; } return true; });
+                let newSpectators = (window.gameState.spectators || []).filter(s => { if (!window.activePresence[s.id] && Date.now() - (s.joinTime || 0) > 8000) { changed = true; return false; } return true; });
+
+                if (changed) {
+                    if ((window.gameState.dealer ? 1 : 0) + newPlayers.length + newSpectators.length === 0) {
+                        window.gameState = { phase: 'waiting', targetEliminations: 1, currentEliminations: 0, currentTurnIndex: -1, revealStep: 0, dealer: null, dealerHand: [], dealerState: 'playing', players: [], spectators: [], logs: [] };
+                        window.updateDB();
+                    } else {
+                        window.gameState.players = newPlayers; window.gameState.spectators = newSpectators;
+                        if (window.gameState.phase === 'playing') window.nextTurn(true); else window.updateDB();
+                    }
+                }
+            }
+        };
+
+        window.goToSetup = function() { Sound.play('click'); window.gameState.phase = 'setup'; window.updateDB(); };
+
+        window.confirmSystemSetup = function() {
+            Sound.play('click');
+            const targetElims = parseInt(document.getElementById('target-eliminations').value);
+            if(isNaN(targetElims) || targetElims < 1) return alert("1 이상의 숫자를 입력하세요.");
+
+            window.gameState.targetEliminations = targetElims; window.gameState.currentEliminations = 0; window.gameState.phase = 'waiting';
+            window.gameState.dealerHand = []; window.gameState.dealerState = 'playing';
+            window.gameState.players.forEach(p => { p.isAlive = true; p.hand = []; p.state = 'playing'; });
+            
+            addLog(`SYSTEM: 매치 목표가 [${targetElims}명 탈락]으로 설정되었습니다.`, 'alert');
+            window.dealNextRound();
+        };
+
+        window.continueNextRound = function() {
+            Sound.play('click');
+            window.gameState.dealerHand = []; 
+            window.gameState.dealerState = 'playing';
+            window.gameState.revealStep = 0;
+            
+            window.gameState.players.forEach(p => { 
+                if (p.isAlive) {
+                    p.hand = [];
+                    p.state = 'playing';
+                }
+            });
+            
+            addLog(`시스템이 다음 라운드를 진행합니다.`, 'alert');
+            window.dealNextRound();
+        };
+
+        window.dealNextRound = function() {
+            if(window.gameState.phase === 'playing' || window.gameState.phase === 'revealing') return;
+            Sound.play('click');
+            
+            const deck = createDeck();
+            window.gameState.dealerHand = []; window.gameState.dealerState = 'playing'; window.gameState.revealStep = 0;
+            
+            window.gameState.players.forEach(p => { if (p.isAlive) { p.hand = [deck.pop(), deck.pop()]; p.state = 'playing'; } });
+            window.gameState.dealerHand = [deck.pop(), deck.pop()]; window.gameState.deck = deck;
+
+            addLog("시스템이 카드를 딜링했습니다. 게임 시작!", "action");
+
+            const firstAliveIdx = window.gameState.players.findIndex(p => p.isAlive);
+            window.gameState.currentTurnIndex = firstAliveIdx > -1 ? firstAliveIdx : window.gameState.players.length; 
+            window.gameState.phase = 'playing';
+            window.updateDB();
+        };
+
+        window.hit = function() {
+            if(window.gameState.phase !== 'playing') return;
+            const isDealerTurn = window.gameState.currentTurnIndex === window.gameState.players.length;
+            if(!(isDealerTurn ? window.currentUser.role === 'dealer' : window.gameState.players[window.gameState.currentTurnIndex]?.id === window.currentUser.id)) return;
+            
+            // Sound.play('click'); <- 삭제됨
+            addLog(`${window.currentUser.name} 님이 HIT (카드 뽑기) 를 선언했습니다.`, 'action');
+            
+            if (isDealerTurn) {
+                window.gameState.dealerHand.push(window.gameState.deck.pop());
+                if (calculateScore(window.gameState.dealerHand) >= 21) window.gameState.dealerState = 'stood'; 
+            } else {
+                const me = window.gameState.players[window.gameState.currentTurnIndex];
+                me.hand.push(window.gameState.deck.pop());
+                if (calculateScore(me.hand) >= 21) me.state = 'stood'; 
+            }
+            window.nextTurn();
+        };
+        
+        window.stand = function() {
+            if(window.gameState.phase !== 'playing') return;
+            const isDealerTurn = window.gameState.currentTurnIndex === window.gameState.players.length;
+            if(!(isDealerTurn ? window.currentUser.role === 'dealer' : window.gameState.players[window.gameState.currentTurnIndex]?.id === window.currentUser.id)) return;
+
+            // Sound.play('click'); <- 삭제됨
+            addLog(`${window.currentUser.name} 님이 STAND 를 선언했습니다.`, 'action');
+
+            if (isDealerTurn) window.gameState.dealerState = 'stood';
+            else window.gameState.players[window.gameState.currentTurnIndex].state = 'stood';
+            window.nextTurn();
+        };
+    </script>
+</body>
+</html>
